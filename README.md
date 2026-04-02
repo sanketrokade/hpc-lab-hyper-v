@@ -15,18 +15,18 @@ every layer of a cluster from the ground up.
 
 ## Cluster Architecture
 
-| Node       | Role                     | RAM  | CPUs | Disks                    | Network Adapters             |
-|------------|--------------------------|------|------|--------------------------|------------------------------|
-| headnode   | Login + Management + NFS | 8 GB | 4    | 20GB (OS) + 50GB (Data)  | LabSwitch1 + ClusterSwitch   |
-| compute-1  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only           |
-| compute-2  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only           |
+| Node       | Role                     | RAM  | CPUs | Disks                    | Network Adapters           |
+|------------|--------------------------|------|------|--------------------------|----------------------------|
+| headnode   | Login + Management + NFS | 8 GB | 4    | 20GB (OS) + 50GB (Data)  | LabSwitch1 + ClusterSwitch |
+| compute-1  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only         |
+| compute-2  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only         |
 
 ## Network Design
 
-| Switch        | Type     | Subnet           | Purpose                         |
-|---------------|----------|-------------------|----------------------------------|
-| LabSwitch1    | Internal | 192.168.30.0/28   | Internet access (headnode only)  |
-| ClusterSwitch | Private  | 10.10.10.0/24     | Internal cluster communication   |
+| Switch        | Type     | Subnet           | Purpose                        |
+|---------------|----------|-------------------|--------------------------------|
+| LabSwitch1    | Internal | 192.168.30.0/28   | Internet access (headnode only)|
+| ClusterSwitch | Private  | 10.10.10.0/24     | Internal cluster communication |
 
 ### Static IPs
 
@@ -60,6 +60,7 @@ every layer of a cluster from the ground up.
 17. no_root_squash on home/scratch — jobs need root-level file operations
 18. Drop-in config files over editing main configs — survives package updates
 19. Separate firewall zones per interface — security clarity
+20. _netdev for NFS mounts — prevents boot hang when network isn't ready
 
 ## Progress Tracker
 
@@ -67,8 +68,8 @@ every layer of a cluster from the ground up.
 - [x] Hyper-V network setup
 - [x] Head node VM creation and OS installation
 - [x] Head node post-install (networking, firewall, gateway, LVM, NFS)
-- [ ] Compute node deployment
-- [ ] NFS client mounts on compute nodes
+- [x] Compute node deployment
+- [x] NFS client mounts on compute nodes
 - [ ] Passwordless SSH
 - [ ] SLURM scheduler
 - [ ] User management

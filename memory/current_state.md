@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 5 Complete (Compute Nodes Deployed)
+# Last Updated: Phase 6 Complete (Passwordless SSH)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -130,14 +130,26 @@ Exported to: 10.10.10.0/24
 Firewall: nfs, mountd, rpc-bind allowed on trusted zone.
 
 ### Client Mounts (compute-1 and compute-2)
-| Server Export       | Local Mount     | Options          |
-|---------------------|-----------------|------------------|
+| Server Export            | Local Mount     | Options          |
+|--------------------------|-----------------|------------------|
 | headnode:/export/home    | /export/home    | defaults,_netdev |
 | headnode:/export/apps    | /export/apps    | defaults,_netdev |
 | headnode:/export/scratch | /export/scratch | defaults,_netdev |
 
-All in /etc/fstab. Cross-node shared storage verified (file created on
-compute-1 visible from compute-2).
+All in /etc/fstab. Cross-node shared storage verified.
+
+## Passwordless SSH
+
+### Trust Matrix
+| From \ To  | headnode | compute-1 | compute-2 |
+|------------|----------|-----------|-----------|
+| headnode   | ✓        | ✓         | ✓         |
+| compute-1  | ✓        | —         | ✓         |
+| compute-2  | ✓        | ✓         | —         |
+
+All root keys are 4096-bit RSA, no passphrase.
+Keys stored in /root/.ssh/ (local disk per node).
+Future regular users will use /export/home (NFS) — keys shared automatically.
 
 ## /etc/hosts (all three nodes)
 ```
@@ -154,13 +166,13 @@ compute-1 visible from compute-2).
 3. Head node VM creation and OS installation
 4. Head node post-install (networking, firewall, gateway, LVM, NFS)
 5. Compute node deployment (VM creation, OS install, networking, /etc/hosts, NFS mounts)
+6. Passwordless SSH (root access across all nodes)
 
 ## Current Phase
 About to start:
-- Passwordless SSH across the cluster
+- SLURM scheduler setup
 
 ## Pending Future Phases
-- Passwordless SSH
 - SLURM scheduler
 - User management (FreeIPA/LDAP)
 - Environment modules (Lmod)
@@ -194,6 +206,8 @@ About to start:
 22. FAT32 for ESP — universal OS compatibility, diplomatic standard
 23. 600MB ESP over 200MB default — headroom for kernel update accumulation
 24. _netdev for NFS mounts — prevents boot hang when network isn't ready
+25. Empty passphrase on SSH keys — required for non-interactive MPI launches
+26. Compute-to-compute SSH trust — MPI spawns processes peer-to-peer
 
 ## GitHub Repo Structure
 ```
@@ -205,7 +219,8 @@ hpc-lab-hyper-v/
 │   ├── 03-headnode-installation.md
 │   ├── 04-headnode-post-install.md
 │   ├── 05-compute-node-setup.md
-│   └── 06-passwordless-ssh.md (next)
+│   ├── 06-passwordless-ssh.md
+│   └── 07-slurm-setup.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/

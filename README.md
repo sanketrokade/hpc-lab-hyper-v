@@ -61,6 +61,8 @@ every layer of a cluster from the ground up.
 18. Drop-in config files over editing main configs — survives package updates
 19. Separate firewall zones per interface — security clarity
 20. _netdev for NFS mounts — prevents boot hang when network isn't ready
+21. Empty passphrase SSH keys — required for non-interactive MPI launches
+22. Compute-to-compute SSH trust — MPI spawns processes peer-to-peer
 
 ## Progress Tracker
 
@@ -70,7 +72,7 @@ every layer of a cluster from the ground up.
 - [x] Head node post-install (networking, firewall, gateway, LVM, NFS)
 - [x] Compute node deployment
 - [x] NFS client mounts on compute nodes
-- [ ] Passwordless SSH
+- [x] Passwordless SSH
 - [ ] SLURM scheduler
 - [ ] User management
 - [ ] Environment modules

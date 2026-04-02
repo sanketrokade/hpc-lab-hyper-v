@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 4 Complete (Headnode Fully Configured)
+# Last Updated: Phase 5 Complete (Compute Nodes Deployed)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -30,11 +30,11 @@
 
 ## Cluster Architecture
 
-| Node      | RAM | CPUs | Disks              | Network                        |
-|-----------|-----|------|--------------------|--------------------------------|
-| headnode  | 8GB | 4    | 20GB OS + 50GB Data| LabSwitch1 + ClusterSwitch     |
-| compute-1 | 4GB | 4    | 20GB OS            | ClusterSwitch only             |
-| compute-2 | 4GB | 4    | 20GB OS            | ClusterSwitch only             |
+| Node      | RAM | CPUs | Disks              | Network                    |
+|-----------|-----|------|--------------------|----------------------------|
+| headnode  | 8GB | 4    | 20GB OS + 50GB Data| LabSwitch1 + ClusterSwitch |
+| compute-1 | 4GB | 4    | 20GB OS            | ClusterSwitch only         |
+| compute-2 | 4GB | 4    | 20GB OS            | ClusterSwitch only         |
 
 Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 
@@ -62,17 +62,26 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 ### Static IPs
 - headnode LabSwitch1: 192.168.30.2/28 (gateway: 192.168.30.1)
 - headnode ClusterSwitch: 10.10.10.1/24
-- compute-1 ClusterSwitch: 10.10.10.11/24
-- compute-2 ClusterSwitch: 10.10.10.12/24
+- compute-1 ClusterSwitch: 10.10.10.11/24 (gateway: 10.10.10.1)
+- compute-2 ClusterSwitch: 10.10.10.12/24 (gateway: 10.10.10.1)
 
 ### Interfaces on headnode
 - eth0: LabSwitch1, Static (192.168.30.2), MAC 00:15:5d:59:08:03, firewall public zone
 - eth1: ClusterSwitch, Static (10.10.10.1), MAC 00:15:5d:59:08:04, firewall trusted zone
 
+### Interfaces on compute-1
+- eth0: ClusterSwitch, Static (10.10.10.11), MAC 00:15:5d:59:08:08
+- Connection profile name: cluster
+
+### Interfaces on compute-2
+- eth0: ClusterSwitch, Static (10.10.10.12), MAC 00:15:5d:59:08:09
+- Connection profile name: cluster
+
 ### Gateway Configuration
-- ip_forward = 1 (set in /etc/sysctl.d/99-cluster.conf)
+- ip_forward = 1 (set in /etc/sysctl.d/99-cluster.conf on headnode)
 - Masquerading enabled on public zone
-- Compute nodes will set 10.10.10.1 as their default gateway
+- Compute nodes use 10.10.10.1 as default gateway
+- DNS: 8.8.8.8 on all nodes
 
 ## Storage Layout (headnode)
 
@@ -96,8 +105,21 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 
 All mounted via UUID in /etc/fstab. Verified with mount -a.
 
-## NFS Exports (headnode)
+## Storage Layout (compute nodes)
 
+### OS Disk (20GB) — Standard Partitions, GPT/UEFI (identical on both)
+| Partition | Mount     | Size    | FS                   |
+|-----------|-----------|---------|----------------------|
+| sda1      | /boot/efi | 600MB   | EFI System Partition |
+| sda2      | /boot     | 1GB     | xfs                  |
+| sda3      | swap      | 2GB     | swap                 |
+| sda4      | /         | ~16.4GB | xfs                  |
+
+No data disk — shared storage via NFS from headnode.
+
+## NFS Configuration
+
+### Exports (headnode)
 | Export          | Access | Options             |
 |-----------------|--------|---------------------|
 | /export/home    | rw     | sync,no_root_squash |
@@ -107,7 +129,17 @@ All mounted via UUID in /etc/fstab. Verified with mount -a.
 Exported to: 10.10.10.0/24
 Firewall: nfs, mountd, rpc-bind allowed on trusted zone.
 
-## /etc/hosts configured
+### Client Mounts (compute-1 and compute-2)
+| Server Export       | Local Mount     | Options          |
+|---------------------|-----------------|------------------|
+| headnode:/export/home    | /export/home    | defaults,_netdev |
+| headnode:/export/apps    | /export/apps    | defaults,_netdev |
+| headnode:/export/scratch | /export/scratch | defaults,_netdev |
+
+All in /etc/fstab. Cross-node shared storage verified (file created on
+compute-1 visible from compute-2).
+
+## /etc/hosts (all three nodes)
 ```
 127.0.0.1   localhost localhost.localdomain
 ::1         localhost localhost.localdomain
@@ -121,26 +153,13 @@ Firewall: nfs, mountd, rpc-bind allowed on trusted zone.
 2. Hyper-V network setup (LabSwitch1, ClusterSwitch, NAT)
 3. Head node VM creation and OS installation
 4. Head node post-install (networking, firewall, gateway, LVM, NFS)
+5. Compute node deployment (VM creation, OS install, networking, /etc/hosts, NFS mounts)
 
 ## Current Phase
 About to start:
-- Compute node VM creation and OS installation (reinstall — first attempt had wrong hostnames, LVM on OS disk, wrong partition sizes)
-
-## Compute Node Install Requirements (Don't Repeat Mistakes)
-- Hostname: compute-1 and compute-2 (dash, not letter L)
-- Partitioning: Custom, Standard Partition (NOT automatic/LVM)
-- /boot/efi: 600MB
-- /boot: 1GB
-- swap: 2GB
-- /: remaining (~16.4GB)
-- Disk size: 20GB (NOT 600GB)
-- Only one NIC: ClusterSwitch
-- No data disk
+- Passwordless SSH across the cluster
 
 ## Pending Future Phases
-- Compute node network configuration
-- NFS client mounts on compute nodes
-- Test gateway (internet from compute nodes)
 - Passwordless SSH
 - SLURM scheduler
 - User management (FreeIPA/LDAP)
@@ -174,6 +193,7 @@ About to start:
 21. CLI for all VM operations — reproducible, documentable, scriptable
 22. FAT32 for ESP — universal OS compatibility, diplomatic standard
 23. 600MB ESP over 200MB default — headroom for kernel update accumulation
+24. _netdev for NFS mounts — prevents boot hang when network isn't ready
 
 ## GitHub Repo Structure
 ```
@@ -184,7 +204,8 @@ hpc-lab-hyper-v/
 │   ├── 02-hyperv-network-setup.md
 │   ├── 03-headnode-installation.md
 │   ├── 04-headnode-post-install.md
-│   └── 05-compute-node-setup.md (next)
+│   ├── 05-compute-node-setup.md
+│   └── 06-passwordless-ssh.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/
@@ -197,10 +218,10 @@ D:\sanket\VMs\cluster\
 ├── headnode\
 │   ├── headnode-os.vhdx (20GB)
 │   └── headnode-data.vhdx (50GB, Dynamic)
-├── compute1\
-│   └── (to be created)
-└── compute2\
-    └── (to be created)
+├── compute-1\
+│   └── compute1-os.vhdx (20GB)
+└── compute-2\
+    └── compute2-os.vhdx (20GB)
 ```
 
 ## ISO Location

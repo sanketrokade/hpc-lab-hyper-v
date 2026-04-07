@@ -15,18 +15,18 @@ every layer of a cluster from the ground up.
 
 ## Cluster Architecture
 
-| Node       | Role                     | RAM  | CPUs | Disks                    | Network Adapters           |
-|------------|--------------------------|------|------|--------------------------|----------------------------|
-| headnode   | Login + Management + NFS | 8 GB | 4    | 20GB (OS) + 50GB (Data)  | LabSwitch1 + ClusterSwitch |
-| compute-1  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only         |
-| compute-2  | Compute                  | 4 GB | 4    | 20GB (OS)                | ClusterSwitch only         |
+| Node      | Role                     | RAM  | CPUs | Disks                   | Network Adapters           |
+|-----------|--------------------------|------|------|-------------------------|----------------------------|
+| headnode  | Login + Management + NFS | 8 GB | 4    | 20GB (OS) + 50GB (Data) | LabSwitch1 + ClusterSwitch |
+| compute-1 | Compute                  | 4 GB | 4    | 20GB (OS)               | ClusterSwitch only         |
+| compute-2 | Compute                  | 4 GB | 4    | 20GB (OS)               | ClusterSwitch only         |
 
 ## Network Design
 
-| Switch        | Type     | Subnet           | Purpose                        |
-|---------------|----------|-------------------|--------------------------------|
-| LabSwitch1    | Internal | 192.168.30.0/28   | Internet access (headnode only)|
-| ClusterSwitch | Private  | 10.10.10.0/24     | Internal cluster communication |
+| Switch        | Type     | Subnet          | Purpose                         |
+|---------------|----------|-----------------|---------------------------------|
+| LabSwitch1    | Internal | 192.168.30.0/28 | Internet access (headnode only) |
+| ClusterSwitch | Private  | 10.10.10.0/24   | Internal cluster communication  |
 
 ### Static IPs
 
@@ -63,6 +63,9 @@ every layer of a cluster from the ground up.
 20. _netdev for NFS mounts — prevents boot hang when network isn't ready
 21. Empty passphrase SSH keys — required for non-interactive MPI launches
 22. Compute-to-compute SSH trust — MPI spawns processes peer-to-peer
+23. Fixed UID 994 for slurm user — must match across all nodes
+24. ReturnToService=2 — nodes auto-recover after reboot without manual intervention
+25. CoresPerSocket=2 ThreadsPerCore=2 — matches Hyper-V vCPU topology
 
 ## Progress Tracker
 
@@ -73,7 +76,7 @@ every layer of a cluster from the ground up.
 - [x] Compute node deployment
 - [x] NFS client mounts on compute nodes
 - [x] Passwordless SSH
-- [ ] SLURM scheduler
+- [x] SLURM scheduler
 - [ ] User management
 - [ ] Environment modules
 - [ ] Monitoring

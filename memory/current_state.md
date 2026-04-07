@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 6 Complete (Passwordless SSH)
+# Last Updated: Phase 7 Complete (SLURM Scheduler)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -40,12 +40,12 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 
 ## Hyper-V Virtual Switches
 
-| Switch         | Type     | Purpose                     |
-|----------------|----------|-----------------------------|
+| Switch         | Type     | Purpose                         |
+|----------------|----------|---------------------------------|
 | vSwitch1       | External | Host internet (not used by VMs) |
-| LabSwitch1     | Internal | Headnode internet via NAT   |
-| ClusterSwitch  | Private  | Cluster internal only       |
-| Default Switch | Internal | Hyper-V default (ignored)   |
+| LabSwitch1     | Internal | Headnode internet via NAT       |
+| ClusterSwitch  | Private  | Cluster internal only           |
+| Default Switch | Internal | Hyper-V default (ignored)       |
 
 ## Host-Side NAT Configuration
 - LabSwitch1 host IP: 192.168.30.1/28
@@ -54,10 +54,10 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 
 ## Network Design
 
-| Network       | Subnet           | Purpose              |
-|---------------|-------------------|----------------------|
-| LabSwitch1    | 192.168.30.0/28   | Internet (head only) |
-| ClusterSwitch | 10.10.10.0/24     | Cluster internal     |
+| Network       | Subnet          | Purpose              |
+|---------------|-----------------|----------------------|
+| LabSwitch1    | 192.168.30.0/28 | Internet (head only) |
+| ClusterSwitch | 10.10.10.0/24   | Cluster internal     |
 
 ### Static IPs
 - headnode LabSwitch1: 192.168.30.2/28 (gateway: 192.168.30.1)
@@ -141,15 +141,90 @@ All in /etc/fstab. Cross-node shared storage verified.
 ## Passwordless SSH
 
 ### Trust Matrix
-| From \ To  | headnode | compute-1 | compute-2 |
-|------------|----------|-----------|-----------|
-| headnode   | ✓        | ✓         | ✓         |
-| compute-1  | ✓        | —         | ✓         |
-| compute-2  | ✓        | ✓         | —         |
+| From \ To | headnode | compute-1 | compute-2 |
+|-----------|----------|-----------|-----------|
+| headnode  | ✓        | ✓         | ✓         |
+| compute-1 | ✓        | —         | ✓         |
+| compute-2 | ✓        | ✓         | —         |
 
 All root keys are 4096-bit RSA, no passphrase.
 Keys stored in /root/.ssh/ (local disk per node).
 Future regular users will use /export/home (NFS) — keys shared automatically.
+
+## SLURM Configuration
+
+### Services Per Node
+| Service   | Node      | Port | Status  |
+|-----------|-----------|------|---------|
+| munge     | all nodes | —    | running |
+| mariadb   | headnode  | 3306 | running |
+| slurmdbd  | headnode  | 6819 | running |
+| slurmctld | headnode  | 6817 | running |
+| slurmd    | compute-* | 6818 | running |
+
+### Port Reference
+| Port | Daemon    | Open on   |
+|------|-----------|-----------|
+| 6817 | slurmctld | headnode  |
+| 6818 | slurmd    | compute-* |
+| 6819 | slurmdbd  | headnode  |
+
+### Munge
+- Key location: /etc/munge/munge.key
+- Permissions: 400, owned by munge:munge
+- Same key on all three nodes
+- Cross-node authentication verified
+
+### MariaDB
+- Database: slurm_acct_db
+- User: slurm@localhost
+- Secured with mysql_secure_installation
+
+### SLURM User
+- Username: slurm
+- UID/GID: 994 (identical on all nodes)
+- Shell: /sbin/nologin
+- Home: /var/lib/slurm
+
+### slurm.conf Key Settings
+- ClusterName: hpc-lab
+- SlurmctldHost: headnode
+- SchedulerType: sched/backfill
+- SelectType: select/cons_tres
+- SelectTypeParameters: CR_Core_Memory
+- ReturnToService: 2
+- AccountingStorageType: accounting_storage/slurmdbd
+- JobAcctGatherType: jobacct_gather/cgroup
+
+### Node Definitions
+```
+NodeName=compute-1 NodeAddr=10.10.10.11 CPUs=4 RealMemory=3500
+  Sockets=1 CoresPerSocket=2 ThreadsPerCore=2 State=UNKNOWN
+NodeName=compute-2 NodeAddr=10.10.10.12 CPUs=4 RealMemory=3500
+  Sockets=1 CoresPerSocket=2 ThreadsPerCore=2 State=UNKNOWN
+```
+
+**Important:** Hyper-V presents vCPUs as 2 cores x 2 threads.
+CoresPerSocket=4 ThreadsPerCore=1 will cause NODE_FAIL.
+
+### Partition
+```
+PartitionName=compute Nodes=compute-1,compute-2 Default=YES
+  MaxTime=INFINITE State=UP
+```
+
+### Directories
+| Path                  | Node      | Owner      |
+|-----------------------|-----------|------------|
+| /var/spool/slurmctld  | headnode  | slurm:slurm|
+| /var/spool/slurmd     | compute-* | slurm:slurm|
+| /var/log/slurm        | all nodes | slurm:slurm|
+
+### Verified Working
+- Both nodes show clean `idle` state in sinfo
+- Jobs submit, run on correct compute nodes, complete successfully
+- Job accounting recorded in slurmdbd
+- Nodes auto-recover after reboot (ReturnToService=2)
 
 ## /etc/hosts (all three nodes)
 ```
@@ -165,16 +240,16 @@ Future regular users will use /export/home (NFS) — keys shared automatically.
 2. Hyper-V network setup (LabSwitch1, ClusterSwitch, NAT)
 3. Head node VM creation and OS installation
 4. Head node post-install (networking, firewall, gateway, LVM, NFS)
-5. Compute node deployment (VM creation, OS install, networking, /etc/hosts, NFS mounts)
+5. Compute node deployment (VM creation, OS install, networking, NFS mounts)
 6. Passwordless SSH (root access across all nodes)
+7. SLURM scheduler (munge, MariaDB, slurmctld, slurmdbd, slurmd)
 
 ## Current Phase
 About to start:
-- SLURM scheduler setup
+- User management
 
 ## Pending Future Phases
-- SLURM scheduler
-- User management (FreeIPA/LDAP)
+- User management (local users with NFS home directories)
 - Environment modules (Lmod)
 - Software compilation (OpenMPI, GCC)
 - Monitoring (Prometheus + Grafana)
@@ -208,6 +283,10 @@ About to start:
 24. _netdev for NFS mounts — prevents boot hang when network isn't ready
 25. Empty passphrase on SSH keys — required for non-interactive MPI launches
 26. Compute-to-compute SSH trust — MPI spawns processes peer-to-peer
+27. Fixed UID 994 for slurm user — must match across all nodes
+28. ReturnToService=2 — nodes auto-recover after reboot without manual intervention
+29. CoresPerSocket=2 ThreadsPerCore=2 — Hyper-V vCPU topology reality
+30. slurmdbd before slurmctld startup order — controller connects to DB on start
 
 ## GitHub Repo Structure
 ```
@@ -220,7 +299,8 @@ hpc-lab-hyper-v/
 │   ├── 04-headnode-post-install.md
 │   ├── 05-compute-node-setup.md
 │   ├── 06-passwordless-ssh.md
-│   └── 07-slurm-setup.md (next)
+│   ├── 07-slurm-setup.md
+│   └── 08-user-management.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/

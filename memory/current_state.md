@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 7 Complete (SLURM Scheduler)
+# Last Updated: Phase 8 Complete (User Management)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -140,7 +140,7 @@ All in /etc/fstab. Cross-node shared storage verified.
 
 ## Passwordless SSH
 
-### Trust Matrix
+### Trust Matrix (root)
 | From \ To | headnode | compute-1 | compute-2 |
 |-----------|----------|-----------|-----------|
 | headnode  | ✓        | ✓         | ✓         |
@@ -149,7 +149,11 @@ All in /etc/fstab. Cross-node shared storage verified.
 
 All root keys are 4096-bit RSA, no passphrase.
 Keys stored in /root/.ssh/ (local disk per node).
-Future regular users will use /export/home (NFS) — keys shared automatically.
+
+### Regular Users
+- Keys stored in /export/home/<user>/.ssh/ (NFS shared)
+- Generate once on headnode — works everywhere automatically
+- SELinux boolean `use_nfs_home_dirs=1` required on compute nodes
 
 ## SLURM Configuration
 
@@ -169,23 +173,6 @@ Future regular users will use /export/home (NFS) — keys shared automatically.
 | 6818 | slurmd    | compute-* |
 | 6819 | slurmdbd  | headnode  |
 
-### Munge
-- Key location: /etc/munge/munge.key
-- Permissions: 400, owned by munge:munge
-- Same key on all three nodes
-- Cross-node authentication verified
-
-### MariaDB
-- Database: slurm_acct_db
-- User: slurm@localhost
-- Secured with mysql_secure_installation
-
-### SLURM User
-- Username: slurm
-- UID/GID: 994 (identical on all nodes)
-- Shell: /sbin/nologin
-- Home: /var/lib/slurm
-
 ### slurm.conf Key Settings
 - ClusterName: hpc-lab
 - SlurmctldHost: headnode
@@ -204,27 +191,46 @@ NodeName=compute-2 NodeAddr=10.10.10.12 CPUs=4 RealMemory=3500
   Sockets=1 CoresPerSocket=2 ThreadsPerCore=2 State=UNKNOWN
 ```
 
-**Important:** Hyper-V presents vCPUs as 2 cores x 2 threads.
-CoresPerSocket=4 ThreadsPerCore=1 will cause NODE_FAIL.
-
 ### Partition
 ```
 PartitionName=compute Nodes=compute-1,compute-2 Default=YES
   MaxTime=INFINITE State=UP
 ```
 
-### Directories
-| Path                  | Node      | Owner      |
-|-----------------------|-----------|------------|
-| /var/spool/slurmctld  | headnode  | slurm:slurm|
-| /var/spool/slurmd     | compute-* | slurm:slurm|
-| /var/log/slurm        | all nodes | slurm:slurm|
+## User Management
+
+### Users Created
+| Username | UID  | GID  | Group    | Home                      |
+|----------|------|------|----------|---------------------------|
+| slurm    | 994  | 994  | slurm    | /var/lib/slurm (local)    |
+| hpcuser1 | 1001 | 1001 | hpcusers | /export/home/hpcuser1     |
+
+### Groups Created
+| Group    | GID  | Purpose              |
+|----------|------|----------------------|
+| slurm    | 994  | SLURM service account|
+| hpcusers | 1001 | HPC regular users    |
+
+### User Creation Pattern
+```bash
+# Headnode (creates home)
+groupadd -g <GID> <group>
+useradd -u <UID> -g <GID> -d /export/home/<user> -m -s /bin/bash <user>
+
+# Compute nodes (no home creation)
+groupadd -g <GID> <group>
+useradd -u <UID> -g <GID> -d /export/home/<user> -M -s /bin/bash <user>
+```
+
+### SELinux Requirements
+- `use_nfs_home_dirs=1` on all compute nodes
+- Required for SSH key auth with NFS home directories
+- Set with: `setsebool -P use_nfs_home_dirs 1`
 
 ### Verified Working
-- Both nodes show clean `idle` state in sinfo
-- Jobs submit, run on correct compute nodes, complete successfully
-- Job accounting recorded in slurmdbd
-- Nodes auto-recover after reboot (ReturnToService=2)
+- hpcuser1 can SSH passwordlessly to compute-1 and compute-2
+- hpcuser1 can submit SLURM jobs
+- Job output lands in /export/home/hpcuser1/ — visible from all nodes
 
 ## /etc/hosts (all three nodes)
 ```
@@ -243,17 +249,18 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 5. Compute node deployment (VM creation, OS install, networking, NFS mounts)
 6. Passwordless SSH (root access across all nodes)
 7. SLURM scheduler (munge, MariaDB, slurmctld, slurmdbd, slurmd)
+8. User management (local users with NFS home, passwordless SSH, SLURM jobs)
 
 ## Current Phase
 About to start:
-- User management
+- Environment modules (Lmod)
 
 ## Pending Future Phases
-- User management (local users with NFS home directories)
 - Environment modules (Lmod)
 - Software compilation (OpenMPI, GCC)
 - Monitoring (Prometheus + Grafana)
 - Automation (Ansible)
+- Centralized user management (FreeIPA/LDAP)
 - Security hardening
 
 ## Key Decisions Made and Why
@@ -285,8 +292,12 @@ About to start:
 26. Compute-to-compute SSH trust — MPI spawns processes peer-to-peer
 27. Fixed UID 994 for slurm user — must match across all nodes
 28. ReturnToService=2 — nodes auto-recover after reboot without manual intervention
-29. CoresPerSocket=2 ThreadsPerCore=2 — Hyper-V vCPU topology reality
+29. CoresPerSocket=2 ThreadsPerCore=2 — matches Hyper-V vCPU topology
 30. slurmdbd before slurmctld startup order — controller connects to DB on start
+31. Fixed UID/GID for all users — NFS file ownership requires consistency
+32. -M flag on compute nodes — prevent duplicate home directory creation
+33. use_nfs_home_dirs SELinux boolean — allows sshd to read authorized_keys on NFS
+34. NFS home for regular users — SSH keys work everywhere without copying
 
 ## GitHub Repo Structure
 ```
@@ -300,7 +311,8 @@ hpc-lab-hyper-v/
 │   ├── 05-compute-node-setup.md
 │   ├── 06-passwordless-ssh.md
 │   ├── 07-slurm-setup.md
-│   └── 08-user-management.md (next)
+│   ├── 08-user-management.md
+│   └── 09-environment-modules.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/

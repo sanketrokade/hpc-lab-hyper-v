@@ -66,6 +66,9 @@ every layer of a cluster from the ground up.
 23. Fixed UID 994 for slurm user — must match across all nodes
 24. ReturnToService=2 — nodes auto-recover after reboot without manual intervention
 25. CoresPerSocket=2 ThreadsPerCore=2 — matches Hyper-V vCPU topology
+26. Fixed UID/GID for all users — NFS file ownership requires consistency
+27. use_nfs_home_dirs SELinux boolean — allows sshd to read keys on NFS mounts
+28. NFS home for regular users — SSH keys work everywhere without copying
 
 ## Progress Tracker
 
@@ -77,7 +80,7 @@ every layer of a cluster from the ground up.
 - [x] NFS client mounts on compute nodes
 - [x] Passwordless SSH
 - [x] SLURM scheduler
-- [ ] User management
+- [x] User management
 - [ ] Environment modules
 - [ ] Monitoring
 - [ ] Automation (Ansible)

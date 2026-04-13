@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 8 Complete (User Management)
+# Last Updated: Phase 9 Complete (Environment Modules)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -153,7 +153,7 @@ Keys stored in /root/.ssh/ (local disk per node).
 ### Regular Users
 - Keys stored in /export/home/<user>/.ssh/ (NFS shared)
 - Generate once on headnode — works everywhere automatically
-- SELinux boolean `use_nfs_home_dirs=1` required on compute nodes
+- SELinux boolean use_nfs_home_dirs=1 required on compute nodes
 
 ## SLURM Configuration
 
@@ -206,31 +206,54 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 | hpcuser1 | 1001 | 1001 | hpcusers | /export/home/hpcuser1     |
 
 ### Groups Created
-| Group    | GID  | Purpose              |
-|----------|------|----------------------|
-| slurm    | 994  | SLURM service account|
-| hpcusers | 1001 | HPC regular users    |
-
-### User Creation Pattern
-```bash
-# Headnode (creates home)
-groupadd -g <GID> <group>
-useradd -u <UID> -g <GID> -d /export/home/<user> -m -s /bin/bash <user>
-
-# Compute nodes (no home creation)
-groupadd -g <GID> <group>
-useradd -u <UID> -g <GID> -d /export/home/<user> -M -s /bin/bash <user>
-```
+| Group    | GID  | Purpose               |
+|----------|------|-----------------------|
+| slurm    | 994  | SLURM service account |
+| hpcusers | 1001 | HPC regular users     |
 
 ### SELinux Requirements
-- `use_nfs_home_dirs=1` on all compute nodes
+- use_nfs_home_dirs=1 on all compute nodes
 - Required for SSH key auth with NFS home directories
-- Set with: `setsebool -P use_nfs_home_dirs 1`
+
+## Environment Modules (Lmod)
+
+### Installation
+- Lmod 8.7.65 installed on all three nodes via EPEL
+- Initialized via /etc/profile.d/modules.sh (automatic on login)
+- Custom modulepath added via /etc/profile.d/01-cluster-modulepath.sh
+
+### Modulepath
+```
+/export/apps/modulefiles    ← custom cluster modules
+/usr/share/lmod/lmod/modulefiles/Core  ← Lmod built-ins
+```
+
+### Modulefiles Created
+| Module       | Location                                  | Software Path |
+|--------------|-------------------------------------------|---------------|
+| gcc/11.5.0   | /export/apps/modulefiles/gcc/11.5.0.lua   | /usr (system) |
+
+### Environment Variables Set by gcc/11.5.0
+| Variable        | Value       |
+|-----------------|-------------|
+| GCC_HOME        | /usr        |
+| CC              | gcc         |
+| CXX             | g++         |
+| PATH            | /usr/bin prepended |
+| LD_LIBRARY_PATH | /usr/lib64 prepended |
+| MANPATH         | /usr/share/man prepended |
 
 ### Verified Working
-- hpcuser1 can SSH passwordlessly to compute-1 and compute-2
-- hpcuser1 can submit SLURM jobs
-- Job output lands in /export/home/hpcuser1/ — visible from all nodes
+- module avail shows gcc/11.5.0 on all nodes
+- module load/unload works cleanly
+- Environment variables set on load, cleared on unload
+- SLURM job submitted as hpcuser1 loaded module and used GCC successfully
+- Job output landed in NFS home directory
+
+### Software Installed on All Nodes
+- gcc 11.5.0
+- gcc-c++ 11.5.0
+- make 4.3
 
 ## /etc/hosts (all three nodes)
 ```
@@ -250,18 +273,18 @@ useradd -u <UID> -g <GID> -d /export/home/<user> -M -s /bin/bash <user>
 6. Passwordless SSH (root access across all nodes)
 7. SLURM scheduler (munge, MariaDB, slurmctld, slurmdbd, slurmd)
 8. User management (local users with NFS home, passwordless SSH, SLURM jobs)
+9. Environment modules (Lmod, gcc/11.5.0 modulefile, SLURM job with module)
 
 ## Current Phase
 About to start:
-- Environment modules (Lmod)
+- Monitoring (Prometheus + Grafana)
 
 ## Pending Future Phases
-- Environment modules (Lmod)
-- Software compilation (OpenMPI, GCC)
 - Monitoring (Prometheus + Grafana)
 - Automation (Ansible)
 - Centralized user management (FreeIPA/LDAP)
 - Security hardening
+- OpenMPI installation and testing
 
 ## Key Decisions Made and Why
 1. Rocky 9 over Rocky 10 — EPEL maturity, stability
@@ -296,8 +319,11 @@ About to start:
 30. slurmdbd before slurmctld startup order — controller connects to DB on start
 31. Fixed UID/GID for all users — NFS file ownership requires consistency
 32. -M flag on compute nodes — prevent duplicate home directory creation
-33. use_nfs_home_dirs SELinux boolean — allows sshd to read authorized_keys on NFS
+33. use_nfs_home_dirs SELinux boolean — allows sshd to read keys on NFS mounts
 34. NFS home for regular users — SSH keys work everywhere without copying
+35. Lmod over Environment Modules — Lua-based, faster, dependency resolution
+36. Modulefiles in /export/apps/modulefiles — alongside software, NFS shared
+37. /etc/profile.d/ for Lmod init — automatic for all users on login
 
 ## GitHub Repo Structure
 ```
@@ -312,7 +338,8 @@ hpc-lab-hyper-v/
 │   ├── 06-passwordless-ssh.md
 │   ├── 07-slurm-setup.md
 │   ├── 08-user-management.md
-│   └── 09-environment-modules.md (next)
+│   ├── 09-environment-modules.md
+│   └── 10-monitoring.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/

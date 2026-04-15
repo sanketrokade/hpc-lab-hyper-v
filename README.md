@@ -71,6 +71,9 @@ every layer of a cluster from the ground up.
 28. NFS home for regular users — SSH keys work everywhere without copying
 29. Lmod over Environment Modules — Lua-based, faster, dependency resolution
 30. Modulefiles in /export/apps/modulefiles — alongside software, NFS shared
+31. Prometheus LTS 3.5.2 — stability over latest features
+32. Grafana on public zone — reachable from Windows host browser
+33. Node Exporter Full dashboard — most widely used, 20M+ downloads
 
 ## Progress Tracker
 
@@ -84,7 +87,7 @@ every layer of a cluster from the ground up.
 - [x] SLURM scheduler
 - [x] User management
 - [x] Environment modules
-- [ ] Monitoring
+- [x] Monitoring
 - [ ] Automation (Ansible)
 
 ## Documentation

@@ -74,6 +74,8 @@ every layer of a cluster from the ground up.
 31. Prometheus LTS 3.5.2 — stability over latest features
 32. Grafana on public zone — reachable from Windows host browser
 33. Node Exporter Full dashboard — most widely used, 20M+ downloads
+34. Ansible on headnode only — agentless, uses existing SSH
+35. Idempotent modules — state-checking, safe to rerun anytime
 
 ## Progress Tracker
 
@@ -88,7 +90,12 @@ every layer of a cluster from the ground up.
 - [x] User management
 - [x] Environment modules
 - [x] Monitoring
-- [ ] Automation (Ansible)
+- [x] Automation (Ansible)
+
+## Upcoming
+- Centralized user management (FreeIPA/LDAP)
+- Security hardening
+- OpenMPI installation and MPI job testing
 
 ## Documentation
 Detailed docs for each phase are in the [docs/](docs/) directory.

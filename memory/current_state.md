@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 9 Complete (Environment Modules)
+# Last Updated: Phase 10 Complete (Monitoring)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -200,16 +200,20 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 ## User Management
 
 ### Users Created
-| Username | UID  | GID  | Group    | Home                      |
-|----------|------|------|----------|---------------------------|
-| slurm    | 994  | 994  | slurm    | /var/lib/slurm (local)    |
-| hpcuser1 | 1001 | 1001 | hpcusers | /export/home/hpcuser1     |
+| Username      | UID  | GID  | Group        | Home                      |
+|---------------|------|------|--------------|---------------------------|
+| slurm         | 994  | 994  | slurm        | /var/lib/slurm (local)    |
+| prometheus    | sys  | sys  | prometheus   | /var/lib/prometheus       |
+| node_exporter | sys  | sys  | node_exporter| —                         |
+| hpcuser1      | 1001 | 1001 | hpcusers     | /export/home/hpcuser1     |
 
 ### Groups Created
-| Group    | GID  | Purpose               |
-|----------|------|-----------------------|
-| slurm    | 994  | SLURM service account |
-| hpcusers | 1001 | HPC regular users     |
+| Group         | GID  | Purpose                    |
+|---------------|------|----------------------------|
+| slurm         | 994  | SLURM service account      |
+| hpcusers      | 1001 | HPC regular users          |
+| prometheus    | sys  | Prometheus service account |
+| node_exporter | sys  | Node Exporter account      |
 
 ### SELinux Requirements
 - use_nfs_home_dirs=1 on all compute nodes
@@ -220,7 +224,7 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 ### Installation
 - Lmod 8.7.65 installed on all three nodes via EPEL
 - Initialized via /etc/profile.d/modules.sh (automatic on login)
-- Custom modulepath added via /etc/profile.d/01-cluster-modulepath.sh
+- Custom modulepath: /etc/profile.d/01-cluster-modulepath.sh
 
 ### Modulepath
 ```
@@ -229,31 +233,44 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 ```
 
 ### Modulefiles Created
-| Module       | Location                                  | Software Path |
-|--------------|-------------------------------------------|---------------|
-| gcc/11.5.0   | /export/apps/modulefiles/gcc/11.5.0.lua   | /usr (system) |
+| Module     | Location                                | Software Path |
+|------------|-----------------------------------------|---------------|
+| gcc/11.5.0 | /export/apps/modulefiles/gcc/11.5.0.lua | /usr (system) |
 
-### Environment Variables Set by gcc/11.5.0
-| Variable        | Value       |
-|-----------------|-------------|
-| GCC_HOME        | /usr        |
-| CC              | gcc         |
-| CXX             | g++         |
-| PATH            | /usr/bin prepended |
-| LD_LIBRARY_PATH | /usr/lib64 prepended |
-| MANPATH         | /usr/share/man prepended |
+## Monitoring Stack
 
-### Verified Working
-- module avail shows gcc/11.5.0 on all nodes
-- module load/unload works cleanly
-- Environment variables set on load, cleared on unload
-- SLURM job submitted as hpcuser1 loaded module and used GCC successfully
-- Job output landed in NFS home directory
+### Services
+| Service        | Node     | Port | Status  | Access              |
+|----------------|----------|------|---------|---------------------|
+| prometheus     | headnode | 9090 | running | trusted + public    |
+| node_exporter  | all      | 9100 | running | trusted zone        |
+| grafana-server | headnode | 3000 | running | public zone         |
 
-### Software Installed on All Nodes
-- gcc 11.5.0
-- gcc-c++ 11.5.0
-- make 4.3
+### Prometheus Configuration
+- Config: /etc/prometheus/prometheus.yml
+- Storage: /var/lib/prometheus (30 day retention)
+- Scrape interval: 15s
+- Targets: headnode:9100, compute-1:9100, compute-2:9100
+- All targets health: up
+
+### Grafana Configuration
+- Access: http://192.168.30.2:3000
+- Data source: Prometheus (http://localhost:9090)
+- Dashboard: Node Exporter Full (ID: 1860)
+
+### Verified Metrics Per Node
+| Node      | RAM Total | CPU Cores | Interfaces     |
+|-----------|-----------|-----------|----------------|
+| headnode  | 7 GiB     | 4         | eth0, eth1, lo |
+| compute-1 | 4 GiB     | 4         | eth0, lo       |
+| compute-2 | 4 GiB     | 4         | eth0, lo       |
+
+NFS mounts visible in disk panels on all nodes.
+
+### Binaries Installed
+- /usr/local/bin/prometheus (v3.5.2 LTS)
+- /usr/local/bin/promtool (v3.5.2)
+- /usr/local/bin/node_exporter (v1.11.1)
 
 ## /etc/hosts (all three nodes)
 ```
@@ -274,13 +291,13 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 7. SLURM scheduler (munge, MariaDB, slurmctld, slurmdbd, slurmd)
 8. User management (local users with NFS home, passwordless SSH, SLURM jobs)
 9. Environment modules (Lmod, gcc/11.5.0 modulefile, SLURM job with module)
+10. Monitoring (Prometheus, Node Exporter, Grafana, Node Exporter Full dashboard)
 
 ## Current Phase
 About to start:
-- Monitoring (Prometheus + Grafana)
+- Automation (Ansible)
 
 ## Pending Future Phases
-- Monitoring (Prometheus + Grafana)
 - Automation (Ansible)
 - Centralized user management (FreeIPA/LDAP)
 - Security hardening
@@ -324,6 +341,12 @@ About to start:
 35. Lmod over Environment Modules — Lua-based, faster, dependency resolution
 36. Modulefiles in /export/apps/modulefiles — alongside software, NFS shared
 37. /etc/profile.d/ for Lmod init — automatic for all users on login
+38. Prometheus LTS 3.5.2 — stability over latest features
+39. 30 day retention — sufficient for lab, avoids disk bloat
+40. Grafana on public zone — must be reachable from Windows host browser
+41. Prometheus on trusted zone — internal cluster use only
+42. Node Exporter Full dashboard ID 1860 — most widely used, 20M+ downloads
+43. cluster label in prometheus.yml — tags all metrics with cluster name
 
 ## GitHub Repo Structure
 ```
@@ -339,7 +362,8 @@ hpc-lab-hyper-v/
 │   ├── 07-slurm-setup.md
 │   ├── 08-user-management.md
 │   ├── 09-environment-modules.md
-│   └── 10-monitoring.md (next)
+│   ├── 10-monitoring.md
+│   └── 11-ansible-automation.md (next)
 ├── configs/
 │   └── (coming soon)
 └── memory/

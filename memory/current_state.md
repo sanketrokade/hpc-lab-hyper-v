@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 10 Complete (Monitoring)
+# Last Updated: Phase 11 Complete (Ansible Automation)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -200,12 +200,13 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 ## User Management
 
 ### Users Created
-| Username      | UID  | GID  | Group        | Home                      |
-|---------------|------|------|--------------|---------------------------|
-| slurm         | 994  | 994  | slurm        | /var/lib/slurm (local)    |
-| prometheus    | sys  | sys  | prometheus   | /var/lib/prometheus       |
-| node_exporter | sys  | sys  | node_exporter| —                         |
-| hpcuser1      | 1001 | 1001 | hpcusers     | /export/home/hpcuser1     |
+| Username      | UID  | GID  | Group         | Home                      |
+|---------------|------|------|---------------|---------------------------|
+| slurm         | 994  | 994  | slurm         | /var/lib/slurm (local)    |
+| prometheus    | sys  | sys  | prometheus    | /var/lib/prometheus       |
+| node_exporter | sys  | sys  | node_exporter | —                         |
+| hpcuser1      | 1001 | 1001 | hpcusers      | /export/home/hpcuser1     |
+| hpcuser2      | 1002 | 1002 | hpcusers      | /export/home/hpcuser2     |
 
 ### Groups Created
 | Group         | GID  | Purpose                    |
@@ -226,12 +227,6 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 - Initialized via /etc/profile.d/modules.sh (automatic on login)
 - Custom modulepath: /etc/profile.d/01-cluster-modulepath.sh
 
-### Modulepath
-```
-/export/apps/modulefiles    ← custom cluster modules
-/usr/share/lmod/lmod/modulefiles/Core  ← Lmod built-ins
-```
-
 ### Modulefiles Created
 | Module     | Location                                | Software Path |
 |------------|-----------------------------------------|---------------|
@@ -240,37 +235,64 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 ## Monitoring Stack
 
 ### Services
-| Service        | Node     | Port | Status  | Access              |
-|----------------|----------|------|---------|---------------------|
-| prometheus     | headnode | 9090 | running | trusted + public    |
-| node_exporter  | all      | 9100 | running | trusted zone        |
-| grafana-server | headnode | 3000 | running | public zone         |
+| Service        | Node     | Port | Status  | Access           |
+|----------------|----------|------|---------|------------------|
+| prometheus     | headnode | 9090 | running | trusted + public |
+| node_exporter  | all      | 9100 | running | trusted zone     |
+| grafana-server | headnode | 3000 | running | public zone      |
 
-### Prometheus Configuration
-- Config: /etc/prometheus/prometheus.yml
-- Storage: /var/lib/prometheus (30 day retention)
-- Scrape interval: 15s
-- Targets: headnode:9100, compute-1:9100, compute-2:9100
-- All targets health: up
-
-### Grafana Configuration
-- Access: http://192.168.30.2:3000
-- Data source: Prometheus (http://localhost:9090)
+### Access
+- Grafana: http://192.168.30.2:3000
+- Prometheus: http://192.168.30.2:9090
 - Dashboard: Node Exporter Full (ID: 1860)
 
-### Verified Metrics Per Node
-| Node      | RAM Total | CPU Cores | Interfaces     |
-|-----------|-----------|-----------|----------------|
-| headnode  | 7 GiB     | 4         | eth0, eth1, lo |
-| compute-1 | 4 GiB     | 4         | eth0, lo       |
-| compute-2 | 4 GiB     | 4         | eth0, lo       |
+## Ansible Automation
 
-NFS mounts visible in disk panels on all nodes.
+### Installation
+- Ansible core 2.14.18 installed on headnode only
+- Location: /usr/bin/ansible
+- Project directory: /etc/ansible/hpc-lab
 
-### Binaries Installed
-- /usr/local/bin/prometheus (v3.5.2 LTS)
-- /usr/local/bin/promtool (v3.5.2)
-- /usr/local/bin/node_exporter (v1.11.1)
+### Project Structure
+```
+/etc/ansible/hpc-lab/
+├── ansible.cfg
+├── inventory/
+│   └── hosts
+├── group_vars/
+├── host_vars/
+├── roles/
+└── playbooks/
+    ├── cluster-facts.yml
+    ├── add-user.yml
+    └── cluster-health.yml
+```
+
+### Inventory Groups
+| Group    | Members               | Purpose                    |
+|----------|-----------------------|----------------------------|
+| headnodes| headnode              | Headnode-specific tasks    |
+| compute  | compute-1, compute-2  | Compute-specific tasks     |
+| cluster  | all three nodes       | Cluster-wide tasks         |
+
+### Playbooks
+| Playbook            | Purpose                                      |
+|---------------------|----------------------------------------------|
+| cluster-facts.yml   | Gather and display node information          |
+| add-user.yml        | Create cluster user across all nodes         |
+| cluster-health.yml  | Check all critical services cluster-wide     |
+
+### Verified Working
+- All three nodes respond to ping module
+- cluster-facts.yml gathers facts from all nodes simultaneously
+- add-user.yml creates hpcuser2 with correct UID/GID on all nodes
+- add-user.yml is idempotent — second run shows changed=0
+- cluster-health.yml shows all services active across cluster
+
+### Key Ansible Config
+- host_key_checking: False — no prompts on cluster network
+- ControlPersist: 60s — reuse SSH connections between tasks
+- remote_user: root — all operations as root
 
 ## /etc/hosts (all three nodes)
 ```
@@ -292,16 +314,13 @@ NFS mounts visible in disk panels on all nodes.
 8. User management (local users with NFS home, passwordless SSH, SLURM jobs)
 9. Environment modules (Lmod, gcc/11.5.0 modulefile, SLURM job with module)
 10. Monitoring (Prometheus, Node Exporter, Grafana, Node Exporter Full dashboard)
-
-## Current Phase
-About to start:
-- Automation (Ansible)
+11. Automation (Ansible inventory, facts, user creation, health check playbooks)
 
 ## Pending Future Phases
-- Automation (Ansible)
 - Centralized user management (FreeIPA/LDAP)
 - Security hardening
 - OpenMPI installation and testing
+- MPI job submission across multiple nodes
 
 ## Key Decisions Made and Why
 1. Rocky 9 over Rocky 10 — EPEL maturity, stability
@@ -347,6 +366,11 @@ About to start:
 41. Prometheus on trusted zone — internal cluster use only
 42. Node Exporter Full dashboard ID 1860 — most widely used, 20M+ downloads
 43. cluster label in prometheus.yml — tags all metrics with cluster name
+44. Ansible on headnode only — agentless, uses existing SSH
+45. host_key_checking=False — no prompts on trusted cluster network
+46. ControlPersist=60s — reuse SSH connections, faster playbook execution
+47. headnodes group (plural) — avoids host/group name conflict warning
+48. Idempotent modules over shell/command — state-checking, safe to rerun
 
 ## GitHub Repo Structure
 ```
@@ -363,7 +387,7 @@ hpc-lab-hyper-v/
 │   ├── 08-user-management.md
 │   ├── 09-environment-modules.md
 │   ├── 10-monitoring.md
-│   └── 11-ansible-automation.md (next)
+│   └── 11-ansible-automation.md
 ├── configs/
 │   └── (coming soon)
 └── memory/

@@ -76,6 +76,12 @@ every layer of a cluster from the ground up.
 33. Node Exporter Full dashboard — most widely used, 20M+ downloads
 34. Ansible on headnode only — agentless, uses existing SSH
 35. Idempotent modules — state-checking, safe to rerun anytime
+36. OpenMPI 4.1.8 from source — version control, install to /export/apps
+37. No PMIx compile flag — SLURM 22.05 built without PMI support
+38. mpirun --mca plm rsh — SSH-based launch bypasses SLURM PMI limitation
+39. --prefix flag on mpirun — compute nodes find orted without PATH changes
+40. eth0 trusted zone on compute nodes — private network, no port restrictions
+41. Jobs submitted as regular user — OpenMPI refuses to run as root
 
 ## Progress Tracker
 
@@ -91,11 +97,11 @@ every layer of a cluster from the ground up.
 - [x] Environment modules
 - [x] Monitoring
 - [x] Automation (Ansible)
+- [x] OpenMPI 4.1.8 — multi-node MPI jobs verified
 
 ## Upcoming
 - Centralized user management (FreeIPA/LDAP)
 - Security hardening
-- OpenMPI installation and MPI job testing
 
 ## Documentation
 Detailed docs for each phase are in the [docs/](docs/) directory.

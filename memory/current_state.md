@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 11 Complete (Ansible Automation)
+# Last Updated: Phase 12 Complete (OpenMPI)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -17,6 +17,8 @@
 5. Challenge Sanket's thinking, don't just give answers
 6. All VM operations via PowerShell CLI — not GUI
 7. Documentation must be properly formatted markdown, copy-paste ready
+8. Do not take decisions without asking — provide suggestions but keep them brief
+9. Do not start a new conversation mid-phase
 
 ## Lab Environment
 - Host: HP Z8 Workstation, Windows 11
@@ -70,11 +72,11 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 - eth1: ClusterSwitch, Static (10.10.10.1), MAC 00:15:5d:59:08:04, firewall trusted zone
 
 ### Interfaces on compute-1
-- eth0: ClusterSwitch, Static (10.10.10.11), MAC 00:15:5d:59:08:08
+- eth0: ClusterSwitch, Static (10.10.10.11), MAC 00:15:5d:59:08:08, firewall trusted zone
 - Connection profile name: cluster
 
 ### Interfaces on compute-2
-- eth0: ClusterSwitch, Static (10.10.10.12), MAC 00:15:5d:59:08:09
+- eth0: ClusterSwitch, Static (10.10.10.12), MAC 00:15:5d:59:08:09, firewall trusted zone
 - Connection profile name: cluster
 
 ### Gateway Configuration
@@ -228,9 +230,10 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 - Custom modulepath: /etc/profile.d/01-cluster-modulepath.sh
 
 ### Modulefiles Created
-| Module     | Location                                | Software Path |
-|------------|-----------------------------------------|---------------|
-| gcc/11.5.0 | /export/apps/modulefiles/gcc/11.5.0.lua | /usr (system) |
+| Module        | Location                                   | Software Path             |
+|---------------|--------------------------------------------|---------------------------|
+| gcc/11.5.0    | /export/apps/modulefiles/gcc/11.5.0.lua    | /usr (system)             |
+| openmpi/4.1.8 | /export/apps/modulefiles/openmpi/4.1.8.lua | /export/apps/openmpi/4.1.8|
 
 ## Monitoring Stack
 
@@ -282,17 +285,44 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 | add-user.yml        | Create cluster user across all nodes         |
 | cluster-health.yml  | Check all critical services cluster-wide     |
 
-### Verified Working
-- All three nodes respond to ping module
-- cluster-facts.yml gathers facts from all nodes simultaneously
-- add-user.yml creates hpcuser2 with correct UID/GID on all nodes
-- add-user.yml is idempotent — second run shows changed=0
-- cluster-health.yml shows all services active across cluster
+## OpenMPI
 
-### Key Ansible Config
-- host_key_checking: False — no prompts on cluster network
-- ControlPersist: 60s — reuse SSH connections between tasks
-- remote_user: root — all operations as root
+### Installation
+- Version: 4.1.8
+- Source: https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.8.tar.gz
+- Install path: /export/apps/openmpi/4.1.8 (NFS shared)
+- Configure flags: --prefix only (no PMIx — SLURM built without PMI support)
+- Modulefile: /export/apps/modulefiles/openmpi/4.1.8.lua
+
+### Launch Method
+- SLURM 22.05 from Rocky repos built without PMI/PMIx
+- srun cannot bootstrap MPI processes
+- Use: mpirun --mca plm rsh --prefix /export/apps/openmpi/4.1.8
+- --prefix ensures compute nodes find orted without manual PATH setup
+
+### Firewall
+- compute-1 and compute-2 eth0 moved to trusted zone
+- Required for arbitrary TCP ports between MPI daemons
+
+### Verified Working
+- 4 ranks across 2 nodes (2 per node)
+- Jobs submitted as hpcuser1 (OpenMPI refuses root)
+
+### Job Script Template
+```bash
+#!/bin/bash
+#SBATCH --job-name=mpi-test
+#SBATCH --nodes=2
+#SBATCH --ntasks=4
+#SBATCH --partition=compute
+
+module load openmpi/4.1.8
+mpirun --mca plm rsh \
+       --prefix /export/apps/openmpi/4.1.8 \
+       -np 4 \
+       --host compute-1:2,compute-2:2 \
+       /path/to/binary
+```
 
 ## /etc/hosts (all three nodes)
 ```
@@ -315,12 +345,15 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 9. Environment modules (Lmod, gcc/11.5.0 modulefile, SLURM job with module)
 10. Monitoring (Prometheus, Node Exporter, Grafana, Node Exporter Full dashboard)
 11. Automation (Ansible inventory, facts, user creation, health check playbooks)
+12. OpenMPI (4.1.8 from source, SSH-based launch, multi-node MPI jobs verified)
 
 ## Pending Future Phases
 - Centralized user management (FreeIPA/LDAP)
 - Security hardening
-- OpenMPI installation and testing
-- MPI job submission across multiple nodes
+
+## Active Snapshot
+- Name: pre-freeipa (April 16, 2026)
+- State: Clean post-Ansible, pre-FreeIPA attempt
 
 ## Key Decisions Made and Why
 1. Rocky 9 over Rocky 10 — EPEL maturity, stability
@@ -371,6 +404,12 @@ PartitionName=compute Nodes=compute-1,compute-2 Default=YES
 46. ControlPersist=60s — reuse SSH connections, faster playbook execution
 47. headnodes group (plural) — avoids host/group name conflict warning
 48. Idempotent modules over shell/command — state-checking, safe to rerun
+49. OpenMPI 4.1.8 from source — version control, install to /export/apps
+50. No PMIx compile flag — SLURM 22.05 built without PMI support
+51. mpirun --mca plm rsh — SSH-based launch bypasses broken SLURM PMI
+52. --prefix flag on mpirun — compute nodes find orted without PATH changes
+53. eth0 trusted zone on compute nodes — private network, no port restrictions
+54. Jobs as hpcuser1 — OpenMPI refuses to run MPI as root
 
 ## GitHub Repo Structure
 ```
@@ -387,7 +426,8 @@ hpc-lab-hyper-v/
 │   ├── 08-user-management.md
 │   ├── 09-environment-modules.md
 │   ├── 10-monitoring.md
-│   └── 11-ansible-automation.md
+│   ├── 11-ansible-automation.md
+│   └── 12-openmpi.md
 ├── configs/
 │   └── (coming soon)
 └── memory/

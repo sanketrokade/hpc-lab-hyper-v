@@ -1,5 +1,5 @@
 # HPC Lab Cluster — Conversation State
-# Last Updated: Phase 12 Complete (OpenMPI)
+# Last Updated: Phase 13 Complete (Clock Synchronization)
 
 ## Who Am I Working With
 - Name: Sanket
@@ -8,6 +8,8 @@
 - Skill Level: Comfortable with Linux (RHEL and Debian), used VMware and Hyper-V
 - Previous HPC lab experience on VMware (completed through Phase 5)
 - Rebuilding from scratch on Hyper-V for deeper learning
+- Ansible installed and tested but not yet used in workflows — wants to
+  build manually first, then identify automation opportunities
 
 ## Rules
 1. Keep it conversational — no info dumps
@@ -19,6 +21,7 @@
 7. Documentation must be properly formatted markdown, copy-paste ready
 8. Do not take decisions without asking — provide suggestions but keep them brief
 9. Do not start a new conversation mid-phase
+10. Manual implementation first; flag Ansible opportunities for discussion
 
 ## Lab Environment
 - Host: HP Z8 Workstation, Windows 11
@@ -48,6 +51,12 @@ Total used: 16GB RAM, 12 CPUs — leaves 49GB and 36 CPUs for host.
 | LabSwitch1     | Internal | Headnode internet via NAT       |
 | ClusterSwitch  | Private  | Cluster internal only           |
 | Default Switch | Internal | Hyper-V default (ignored)       |
+
+## Hyper-V Integration Services
+
+Time Synchronization is **disabled** on all three VMs to prevent the
+Hyper-V host clock from fighting chronyd. All other integration services
+remain at default.
 
 ## Host-Side NAT Configuration
 - LabSwitch1 host IP: 192.168.30.1/28
@@ -139,6 +148,50 @@ Firewall: nfs, mountd, rpc-bind allowed on trusted zone.
 | headnode:/export/scratch | /export/scratch | defaults,_netdev |
 
 All in /etc/fstab. Cross-node shared storage verified.
+
+## Time Synchronization (chrony)
+
+### Architecture
+```
+Internet NTP (Cloudflare/pool.ntp.org)
+            ↓
+    headnode (stratum 4)
+            ↓
+    compute-1, compute-2 (stratum 5)
+```
+
+### Services Per Node
+| Node      | Role            | Source            | Stratum |
+|-----------|-----------------|-------------------|---------|
+| headnode  | Server + Client | pool.ntp.org      | 4       |
+| compute-1 | Client only     | headnode          | 5       |
+| compute-2 | Client only     | headnode          | 5       |
+
+### Headnode chrony.conf (key directives)
+- `pool pool.ntp.org iburst` — multiple upstream sources, fast initial sync
+- `makestep 1.0 3` — step at startup only, slew thereafter
+- `rtcsync` — keep hardware clock correct
+- `allow 10.10.10.0/24` — serve time only to cluster subnet
+- `driftfile /var/lib/chrony/drift`
+- `logdir /var/log/chrony`
+
+### Compute Node chrony.conf (key directives)
+- `server headnode iburst` — single explicit source
+- `makestep 1.0 3`
+- `rtcsync`
+- No `allow` directive — pure clients
+- No external NTP fallback — single source of truth
+
+### Firewall
+- NTP service allowed on headnode trusted zone (port 123/udp)
+- Compute nodes: eth0 in trusted zone, no specific NTP rule needed
+
+### Verified State (Phase 13 close)
+- Headnode: ~3 ms offset from internet NTP
+- Compute-1: ~50 µs offset from headnode
+- Compute-2: ~6 µs offset from headnode
+- All three nodes agree to within microseconds
+- Kerberos 5-minute tolerance has 5,000,000× headroom
 
 ## Passwordless SSH
 
@@ -346,14 +399,28 @@ mpirun --mca plm rsh \
 10. Monitoring (Prometheus, Node Exporter, Grafana, Node Exporter Full dashboard)
 11. Automation (Ansible inventory, facts, user creation, health check playbooks)
 12. OpenMPI (4.1.8 from source, SSH-based launch, multi-node MPI jobs verified)
+13. Clock synchronization (chrony, hierarchical NTP, FreeIPA prerequisite)
 
 ## Pending Future Phases
-- Centralized user management (FreeIPA/LDAP)
-- Security hardening
+- Phase 14: Centralized user management (FreeIPA/LDAP)
+- Phase 15: Security hardening
 
-## Active Snapshot
-- Name: pre-freeipa (April 16, 2026)
-- State: Clean post-Ansible, pre-FreeIPA attempt
+## Phase 14 Architectural Decisions (Pre-Approved)
+| # | Decision | Choice |
+|---|----------|--------|
+| 1 | DNS strategy | Integrated DNS (FreeIPA-managed BIND) |
+| 2 | Domain | hpclab.internal |
+| 3 | Realm | HPCLAB.INTERNAL |
+| 4 | Hostnames | Full FQDN (headnode.hpclab.internal etc.) |
+| 5 | Existing users | Delete and recreate in IPA |
+| 6 | Implementation | Manual first, Ansible flagged inline |
+
+## Active Snapshots
+| Snapshot          | Date               | Purpose                        |
+|-------------------|--------------------|--------------------------------|
+| pre-freeipa       | April 16, 2026     | Deep history (failed FreeIPA)  |
+| mpi-working       | April 27, 2026 AM  | Post-MPI clean state           |
+| post-clock-sync   | April 27, 2026 PM  | Pre-FreeIPA, time-synced       |
 
 ## Key Decisions Made and Why
 1. Rocky 9 over Rocky 10 — EPEL maturity, stability
@@ -410,6 +477,16 @@ mpirun --mca plm rsh \
 52. --prefix flag on mpirun — compute nodes find orted without PATH changes
 53. eth0 trusted zone on compute nodes — private network, no port restrictions
 54. Jobs as hpcuser1 — OpenMPI refuses to run MPI as root
+55. Disable Hyper-V Time Synchronization on guests — prevents host clock from fighting chronyd
+56. chrony over ntpd — designed for VMs, default on RHEL 8+, handles clock jumps
+57. Hierarchical NTP (headnode → compute) — single source of truth, matches air-gapped HPC pattern
+58. allow 10.10.10.0/24 only on headnode chrony — NTP served inward only
+59. NTP firewall on trusted zone only — no NAT-side exposure
+60. makestep 1.0 3 — step at startup only, slew thereafter to protect running services
+61. rtcsync enabled — hardware clock stays correct across reboots
+62. server (not pool) on compute nodes — exactly one explicit source
+63. No external NTP fallback on compute nodes — consistent cluster time over independently-correct time
+64. Backup vendor configs before editing — chrony.conf.original retained for reference
 
 ## GitHub Repo Structure
 ```
@@ -427,7 +504,8 @@ hpc-lab-hyper-v/
 │   ├── 09-environment-modules.md
 │   ├── 10-monitoring.md
 │   ├── 11-ansible-automation.md
-│   └── 12-openmpi.md
+│   ├── 12-openmpi.md
+│   └── 13-clock-sync.md
 ├── configs/
 │   └── (coming soon)
 └── memory/
